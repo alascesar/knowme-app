@@ -1,0 +1,8 @@
+{
+  "name": "KnowMe App v05",
+  "description": "A social memory aid app to help you learn names and faces in your groups.",
+  "requestFramePermissions": [
+    "microphone",
+    "camera"
+  ]
+}
