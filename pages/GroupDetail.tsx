@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { useAuth } from '../App';
-import { storage } from '../services/storage';
+import { supabaseStorage } from '../services/supabaseStorage';
 import { Group, User, UserType } from '../types';
 import { Button } from '../components/Button';
 import { IconArrowLeft, IconUsers, IconCheck, IconShare, IconClipboard, IconPencil, IconX } from '../components/Icons';
@@ -24,31 +24,41 @@ export const GroupDetail: React.FC = () => {
   
   useEffect(() => {
       if (groupId && user) {
-          const g = storage.getGroupById(groupId);
-          setGroup(g);
-          
-          if (g) {
-              setEditName(g.name);
-              setEditDesc(g.description);
-          }
-          
-          const allMembers = storage.getGroupMembers(groupId);
-          setMembers(allMembers);
-
-          // Filtering Logic
-          if (g && g.createdByUserId === user.id) {
-              // Creator sees everyone
-              setVisibleMembers(allMembers);
-          } else {
-              // Regular members see themselves + known people
-              const deck = storage.getDeckForGroup(groupId, user.id);
-              const knownUserIds = deck
-                  .filter(item => item.status && item.status.isKnown)
-                  .map(item => item.card.userId);
+          const loadData = async () => {
+            try {
+              const [g, allMembers, deck] = await Promise.all([
+                supabaseStorage.getGroupById(groupId),
+                supabaseStorage.getGroupMembers(groupId),
+                supabaseStorage.getDeckForGroup(groupId, user.id),
+              ]);
               
-              const filtered = allMembers.filter(m => m.id === user.id || knownUserIds.includes(m.id));
-              setVisibleMembers(filtered);
-          }
+              setGroup(g);
+              
+              if (g) {
+                  setEditName(g.name);
+                  setEditDesc(g.description);
+              }
+              
+              setMembers(allMembers);
+
+              // Filtering Logic
+              if (g && g.createdByUserId === user.id) {
+                  // Creator sees everyone
+                  setVisibleMembers(allMembers);
+              } else {
+                  // Regular members see themselves + known people
+                  const knownUserIds = deck
+                      .filter(item => item.status && item.status.isKnown)
+                      .map(item => item.card.userId);
+                  
+                  const filtered = allMembers.filter(m => m.id === user.id || knownUserIds.includes(m.id));
+                  setVisibleMembers(filtered);
+              }
+            } catch (error) {
+              console.error('Failed to load group data:', error);
+            }
+          };
+          loadData();
       }
   }, [groupId, user]);
 
@@ -79,25 +89,29 @@ export const GroupDetail: React.FC = () => {
     }
   };
 
-  const handleBulkInvite = (e: React.FormEvent) => {
+  const handleBulkInvite = async (e: React.FormEvent) => {
       e.preventDefault();
       if(!groupId || !inviteEmails) return;
 
       const emails = inviteEmails.split(',').map(e => e.trim()).filter(e => e.includes('@'));
       if(emails.length > 0) {
-          storage.inviteUsers(groupId, emails);
-          setInvitesSent(true);
-          setInviteEmails('');
-          setTimeout(() => setInvitesSent(false), 3000);
+          try {
+            await supabaseStorage.inviteUsers(groupId, emails);
+            setInvitesSent(true);
+            setInviteEmails('');
+            setTimeout(() => setInvitesSent(false), 3000);
+          } catch (error) {
+            console.error('Failed to send invites:', error);
+          }
       }
   };
 
-  const handleUpdateGroup = (e: React.FormEvent) => {
+  const handleUpdateGroup = async (e: React.FormEvent) => {
       e.preventDefault();
       if (!group) return;
       
       try {
-          const updated = storage.updateGroup(group.id, { name: editName, description: editDesc });
+          const updated = await supabaseStorage.updateGroup(group.id, { name: editName, description: editDesc });
           setGroup(updated);
           setIsEditing(false);
       } catch (err) {

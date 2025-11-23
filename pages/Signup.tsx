@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../App';
-import { storage } from '../services/storage';
+import { supabase } from '../services/supabase';
+import { supabaseStorage } from '../services/supabaseStorage';
 import { UserType } from '../types';
 import { Button } from '../components/Button';
 
@@ -10,14 +11,81 @@ export const Signup: React.FC = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [isPremium, setIsPremium] = useState(false);
+  const [error, setError] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
   const { setUser } = useAuth();
   const navigate = useNavigate();
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const user = storage.signup(name, email, isPremium ? UserType.PREMIUM : UserType.STANDARD, password);
-    setUser(user);
-    navigate('/');
+    setError('');
+    setIsLoading(true);
+
+    try {
+      // Create auth user
+      const { data: authData, error: authError } = await supabase.auth.signUp({
+        email,
+        password,
+      });
+
+      if (authError) {
+        setError(authError.message || 'Failed to create account');
+        setIsLoading(false);
+        return;
+      }
+
+      if (!authData.user) {
+        setError('Failed to create user account');
+        setIsLoading(false);
+        return;
+      }
+
+      // Create user profile in users table
+      const { error: userError } = await supabase
+        .from('users')
+        .insert({
+          id: authData.user.id,
+          name,
+          email,
+          type: isPremium ? UserType.PREMIUM : UserType.STANDARD,
+          avatar_url: `https://picsum.photos/seed/${name.replace(' ', '')}/200`,
+        });
+
+      if (userError) {
+        setError(`Failed to create user profile: ${userError.message}`);
+        setIsLoading(false);
+        return;
+      }
+
+      // Create empty profile card
+      const { error: profileError } = await supabase
+        .from('profile_cards')
+        .insert({
+          user_id: authData.user.id,
+          full_name: name,
+          photo_url: `https://picsum.photos/seed/${authData.user.id}/400/600`,
+          links: [],
+        });
+
+      if (profileError) {
+        console.warn('Failed to create profile card:', profileError);
+        // Don't fail signup if profile card creation fails
+      }
+
+      // Load user and navigate
+      const user = await supabaseStorage.getCurrentUser();
+      if (user) {
+        setUser(user);
+        navigate('/');
+      } else {
+        setError('Account created but failed to load user profile');
+      }
+    } catch (err) {
+      setError('An unexpected error occurred. Please try again.');
+      console.error('Signup error:', err);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
@@ -77,7 +145,11 @@ export const Signup: React.FC = () => {
             </label>
           </div>
 
-          <Button type="submit" fullWidth size="lg" className="mt-2">Sign Up</Button>
+          {error && <p className="text-red-500 text-sm bg-red-50 p-2 rounded-lg text-center">{error}</p>}
+
+          <Button type="submit" fullWidth size="lg" className="mt-2" disabled={isLoading}>
+            {isLoading ? 'Creating account...' : 'Sign Up'}
+          </Button>
         </form>
 
         <div className="text-center text-sm text-slate-500">

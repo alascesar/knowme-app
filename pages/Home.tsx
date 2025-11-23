@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../App';
 import { Group, UserType } from '../types';
-import { storage } from '../services/storage';
+import { supabaseStorage } from '../services/supabaseStorage';
 import { Button } from '../components/Button';
 import { IconUser, IconLogOut, IconUsers } from '../components/Icons';
 
@@ -16,6 +16,7 @@ declare global {
 export const Home: React.FC = () => {
   const { user, logout } = useAuth();
   const [groups, setGroups] = useState<Group[]>([]);
+  const [groupData, setGroupData] = useState<Map<string, { percentage: number, memberCount: number }>>(new Map());
   const [joinCode, setJoinCode] = useState('');
   const [error, setError] = useState('');
   const [globalRank, setGlobalRank] = useState<{ totalKnown: number, topPercent: number }>({ totalKnown: 0, topPercent: 0 });
@@ -36,8 +37,35 @@ export const Home: React.FC = () => {
 
   useEffect(() => {
     if (user) {
-      setGroups(storage.getGroupsForUser(user.id));
-      setGlobalRank(storage.getGlobalRanking(user.id));
+      const loadData = async () => {
+        try {
+          const [groupsData, rankData] = await Promise.all([
+            supabaseStorage.getGroupsForUser(user.id),
+            supabaseStorage.getGlobalRanking(user.id),
+          ]);
+          setGroups(groupsData);
+          setGlobalRank(rankData);
+          
+          // Load group progress and member counts
+          const groupDataMap = new Map<string, { percentage: number, memberCount: number }>();
+          await Promise.all(groupsData.map(async (group) => {
+            try {
+              const [progress, members] = await Promise.all([
+                supabaseStorage.getGroupProgress(group.id, user.id),
+                supabaseStorage.getGroupMembers(group.id),
+              ]);
+              groupDataMap.set(group.id, { percentage: progress, memberCount: members.length });
+            } catch (error) {
+              console.error(`Failed to load data for group ${group.id}:`, error);
+              groupDataMap.set(group.id, { percentage: 0, memberCount: 0 });
+            }
+          }));
+          setGroupData(groupDataMap);
+        } catch (error) {
+          console.error('Failed to load data:', error);
+        }
+      };
+      loadData();
     }
   }, [user]);
 
@@ -62,7 +90,9 @@ export const Home: React.FC = () => {
             setJoinCode(code.toUpperCase());
             scanner.clear();
             setShowScanner(false);
-            joinGroupById(storage.findGroupByCode(code.toUpperCase())?.id);
+            supabaseStorage.findGroupByCode(code.toUpperCase()).then(group => {
+              joinGroupById(group?.id);
+            });
         }, (errorMessage: any) => {
             // ignore errors
         });
@@ -77,40 +107,54 @@ export const Home: React.FC = () => {
     }
   }, [showScanner]);
 
-  const handleJoinGroup = (e: React.FormEvent) => {
+  const handleJoinGroup = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!user) return;
     
-    const group = storage.findGroupByCode(joinCode);
-    joinGroupById(group?.id);
+    try {
+      const group = await supabaseStorage.findGroupByCode(joinCode);
+      await joinGroupById(group?.id);
+    } catch (error) {
+      setError('Failed to join group. Please try again.');
+    }
   };
 
-  const joinGroupById = (groupId?: string) => {
+  const joinGroupById = async (groupId?: string) => {
       if (!user) return;
       if (groupId) {
-        const joined = storage.joinGroup(groupId, user.id);
-        if (joined) {
-            const group = storage.getGroupById(groupId);
-            if (group) setGroups([...groups, group]);
-            setJoinCode('');
-            setError('');
-            setHasSearched(false);
-            setSearchQuery('');
-            setSearchResults([]);
-        } else {
+        try {
+          const joined = await supabaseStorage.joinGroup(groupId, user.id);
+          if (joined) {
+            const group = await supabaseStorage.getGroupById(groupId);
+            if (group) {
+              setGroups([...groups, group]);
+              setJoinCode('');
+              setError('');
+              setHasSearched(false);
+              setSearchQuery('');
+              setSearchResults([]);
+            }
+          } else {
             setError('You are already in this group.');
+          }
+        } catch (error) {
+          setError('Failed to join group. Please try again.');
         }
       } else {
         setError('Invalid Group or Code.');
       }
   }
 
-  const handleSearch = (e: React.FormEvent) => {
+  const handleSearch = async (e: React.FormEvent) => {
       e.preventDefault();
       if (!searchQuery.trim()) return;
-      const results = storage.searchPublicGroups(searchQuery);
-      setSearchResults(results);
-      setHasSearched(true);
+      try {
+        const results = await supabaseStorage.searchPublicGroups(searchQuery);
+        setSearchResults(results);
+        setHasSearched(true);
+      } catch (error) {
+        setError('Failed to search groups. Please try again.');
+      }
   };
 
   const getProgressColor = (percentage: number) => {
@@ -217,8 +261,9 @@ export const Home: React.FC = () => {
             ) : (
                 <div className="space-y-4">
                     {displayedGroups.map(group => {
-                        const percentage = storage.getGroupProgress(group.id, user.id);
-                        const memberCount = storage.getGroupMembers(group.id).length;
+                        const data = groupData.get(group.id) || { percentage: 0, memberCount: 0 };
+                        const percentage = data.percentage;
+                        const memberCount = data.memberCount;
                         
                         return (
                             <Link key={group.id} to={`/group/${group.id}`} className="block transform transition-transform hover:scale-[1.02] active:scale-[0.98]">

@@ -2,7 +2,8 @@ import React, { useEffect, useState, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../App';
 import { ProfileCard } from '../types';
-import { storage } from '../services/storage';
+import { supabaseStorage } from '../services/supabaseStorage';
+import { uploadProfilePhoto, uploadPronunciationAudio, dataUrlToBlob } from '../services/storageService';
 import { Button } from '../components/Button';
 import { IconArrowLeft, IconMicrophone, IconCamera, IconUser, IconSwitchCamera, IconX } from '../components/Icons';
 import { DeckCard } from '../components/DeckCard';
@@ -51,18 +52,25 @@ export const MyProfile: React.FC = () => {
   
   useEffect(() => {
     if (user) {
-      const p = storage.getProfileByUserId(user.id);
-      if (p) {
-        setProfile(p);
-        setFullName(p.fullName);
-        setPhotoUrl(p.photoUrl);
-        setNationality(p.nationality || '');
-        setShortBio(p.shortBio || '');
-        setFunFact(p.funFact || '');
-        setLinks(p.links?.join(', ') || '');
-        setPronunciationUrl(p.pronunciationAudioUrl || '');
-        setIsDirty(false);
-      }
+      const loadProfile = async () => {
+        try {
+          const p = await supabaseStorage.getProfileByUserId(user.id);
+          if (p) {
+            setProfile(p);
+            setFullName(p.fullName);
+            setPhotoUrl(p.photoUrl);
+            setNationality(p.nationality || '');
+            setShortBio(p.shortBio || '');
+            setFunFact(p.funFact || '');
+            setLinks(p.links?.join(', ') || '');
+            setPronunciationUrl(p.pronunciationAudioUrl || '');
+            setIsDirty(false);
+          }
+        } catch (error) {
+          console.error('Failed to load profile:', error);
+        }
+      };
+      loadProfile();
     }
   }, [user]);
 
@@ -85,38 +93,68 @@ export const MyProfile: React.FC = () => {
     if (!user || !profile) return;
 
     setIsSaving(true);
-    const updatedProfile: ProfileCard = {
-        ...profile,
-        fullName,
-        photoUrl,
-        nationality,
-        shortBio,
-        funFact,
-        links: links.split(',').map(s => s.trim()).filter(s => s.length > 0),
-        pronunciationAudioUrl: pronunciationUrl
-    };
     
-    storage.updateProfile(updatedProfile);
+    try {
+      // Upload photo if it's a base64 data URL (new upload)
+      let finalPhotoUrl = photoUrl;
+      if (photoUrl.startsWith('data:image')) {
+        try {
+          const blob = dataUrlToBlob(photoUrl);
+          finalPhotoUrl = await uploadProfilePhoto(user.id, blob);
+        } catch (error) {
+          console.error('Failed to upload photo:', error);
+          // Continue with base64 if upload fails
+        }
+      }
 
-    // Handle password update
-    if (newPassword && newPassword === confirmPassword) {
-        storage.updatePassword(user.id, newPassword);
-        setPasswordMessage('Password updated!');
-        setNewPassword('');
-        setConfirmPassword('');
-    } else if (newPassword) {
-        setPasswordMessage('Passwords do not match!');
-        setIsSaving(false);
-        return;
+      // Upload audio if it's a base64 data URL (new upload)
+      let finalAudioUrl = pronunciationUrl;
+      if (pronunciationUrl.startsWith('data:audio')) {
+        try {
+          const blob = dataUrlToBlob(pronunciationUrl);
+          finalAudioUrl = await uploadPronunciationAudio(user.id, blob);
+        } catch (error) {
+          console.error('Failed to upload audio:', error);
+          // Continue with base64 if upload fails
+        }
+      }
+
+      const updatedProfile: ProfileCard = {
+          ...profile,
+          fullName,
+          photoUrl: finalPhotoUrl,
+          nationality,
+          shortBio,
+          funFact,
+          links: links.split(',').map(s => s.trim()).filter(s => s.length > 0),
+          pronunciationAudioUrl: finalAudioUrl
+      };
+      
+      await supabaseStorage.updateProfile(updatedProfile);
+      setProfile(updatedProfile);
+
+      // Handle password update
+      if (newPassword && newPassword === confirmPassword) {
+          await supabaseStorage.updatePassword(newPassword);
+          setPasswordMessage('Password updated!');
+          setNewPassword('');
+          setConfirmPassword('');
+      } else if (newPassword) {
+          setPasswordMessage('Passwords do not match!');
+          setIsSaving(false);
+          return;
+      }
+
+      setIsSaving(false);
+      setIsDirty(false);
+      setSaveSuccess(true);
+      setPasswordMessage('');
+      setTimeout(() => setSaveSuccess(false), 3000);
+    } catch (error) {
+      console.error('Failed to save profile:', error);
+      setIsSaving(false);
+      setPasswordMessage('Failed to save profile. Please try again.');
     }
-
-    setTimeout(() => {
-        setIsSaving(false);
-        setIsDirty(false);
-        setSaveSuccess(true);
-        setPasswordMessage('');
-        setTimeout(() => setSaveSuccess(false), 3000);
-    }, 800);
   };
 
   const toggleRecording = async () => {
@@ -135,14 +173,25 @@ export const MyProfile: React.FC = () => {
                   if (e.data.size > 0) chunks.push(e.data);
               };
 
-              recorder.onstop = () => {
+              recorder.onstop = async () => {
                   const blob = new Blob(chunks, { type: 'audio/webm' });
-                  const reader = new FileReader();
-                  reader.onloadend = () => {
-                      const result = reader.result as string;
-                      handleChange(setPronunciationUrl, result);
-                  };
-                  reader.readAsDataURL(blob);
+                  
+                  // Upload audio immediately
+                  if (user) {
+                    try {
+                      const audioUrl = await uploadPronunciationAudio(user.id, blob);
+                      handleChange(setPronunciationUrl, audioUrl);
+                    } catch (error) {
+                      console.error('Failed to upload audio:', error);
+                      // Fallback to base64
+                      const reader = new FileReader();
+                      reader.onloadend = () => {
+                          const result = reader.result as string;
+                          handleChange(setPronunciationUrl, result);
+                      };
+                      reader.readAsDataURL(blob);
+                    }
+                  }
                   
                   // Stop all tracks to release microphone
                   stream.getTracks().forEach(track => track.stop());
@@ -158,15 +207,24 @@ export const MyProfile: React.FC = () => {
       }
   };
 
-  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
       const file = e.target.files?.[0];
-      if (file) {
-          const reader = new FileReader();
-          reader.onloadend = () => {
-              handleChange(setPhotoUrl, reader.result as string);
+      if (file && user) {
+          try {
+              // Upload file to Supabase Storage
+              const uploadedUrl = await uploadProfilePhoto(user.id, file);
+              handleChange(setPhotoUrl, uploadedUrl);
               setShowPhotoOptions(false); // Close modal
-          };
-          reader.readAsDataURL(file);
+          } catch (error) {
+              console.error('Failed to upload image:', error);
+              // Fallback to base64 preview
+              const reader = new FileReader();
+              reader.onloadend = () => {
+                  handleChange(setPhotoUrl, reader.result as string);
+                  setShowPhotoOptions(false);
+              };
+              reader.readAsDataURL(file);
+          }
       }
   };
 
@@ -192,8 +250,8 @@ export const MyProfile: React.FC = () => {
       setFacingMode(prev => prev === 'user' ? 'environment' : 'user');
   };
 
-  const capturePhoto = () => {
-      if (videoRef.current && canvasRef.current) {
+  const capturePhoto = async () => {
+      if (videoRef.current && canvasRef.current && user) {
           const video = videoRef.current;
           const canvas = canvasRef.current;
           // Set canvas dimensions to match video
@@ -209,7 +267,17 @@ export const MyProfile: React.FC = () => {
               }
               ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
               const dataUrl = canvas.toDataURL('image/jpeg', 0.8);
-              handleChange(setPhotoUrl, dataUrl);
+              
+              try {
+                  // Upload captured photo
+                  const blob = dataUrlToBlob(dataUrl);
+                  const uploadedUrl = await uploadProfilePhoto(user.id, blob);
+                  handleChange(setPhotoUrl, uploadedUrl);
+              } catch (error) {
+                  console.error('Failed to upload captured photo:', error);
+                  // Fallback to base64
+                  handleChange(setPhotoUrl, dataUrl);
+              }
               closeCamera();
           }
       }

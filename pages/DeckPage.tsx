@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useRef, useMemo } from 'react';
 import { Link, useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../App';
-import { storage } from '../services/storage';
+import { supabaseStorage } from '../services/supabaseStorage';
 import { CardStatus, ProfileCard } from '../types';
 import { DeckCard } from '../components/DeckCard';
 import { Button } from '../components/Button';
@@ -31,8 +31,15 @@ export const DeckPage: React.FC = () => {
 
   useEffect(() => {
     if (groupId && user) {
-        const allCards = storage.getDeckForGroup(groupId, user.id);
-        setDeck(allCards);
+        const loadDeck = async () => {
+          try {
+            const allCards = await supabaseStorage.getDeckForGroup(groupId, user.id);
+            setDeck(allCards);
+          } catch (error) {
+            console.error('Failed to load deck:', error);
+          }
+        };
+        loadDeck();
     }
   }, [groupId, user]);
 
@@ -74,10 +81,11 @@ export const DeckPage: React.FC = () => {
       }
   };
 
-  const handleMarkKnown = () => {
+  const handleMarkKnown = async () => {
       if (!user || !groupId || !currentCardItem) return;
       
-      storage.markAsKnown(user.id, currentCardItem.card.id, groupId, true);
+      try {
+        await supabaseStorage.markAsKnown(user.id, currentCardItem.card.id, groupId, true);
       
       setDeck(prev => prev.map(item => {
           if (item.card.id === currentCardItem.card.id) {
@@ -103,6 +111,9 @@ export const DeckPage: React.FC = () => {
       } else {
         handleNext();
       }
+      } catch (error) {
+        console.error('Failed to mark as known:', error);
+      }
   };
 
   const handleFilterChange = (newFilter: 'UNKNOWN' | 'KNOWN') => {
@@ -112,13 +123,18 @@ export const DeckPage: React.FC = () => {
       resetCardPosition();
   };
 
-  const handleResetKnowledge = () => {
+  const handleResetKnowledge = async () => {
       if (!user || !groupId) return;
-      storage.resetGroupKnowledge(user.id, groupId);
-      setDeck(storage.getDeckForGroup(groupId, user.id));
-      setFilter('UNKNOWN');
-      setCurrentIndex(0);
-      resetCardPosition();
+      try {
+        await supabaseStorage.resetGroupKnowledge(user.id, groupId);
+        const allCards = await supabaseStorage.getDeckForGroup(groupId, user.id);
+        setDeck(allCards);
+        setFilter('UNKNOWN');
+        setCurrentIndex(0);
+        resetCardPosition();
+      } catch (error) {
+        console.error('Failed to reset knowledge:', error);
+      }
   };
 
   // Swipe Completion Logic with Animation
