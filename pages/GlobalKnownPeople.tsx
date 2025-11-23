@@ -31,11 +31,14 @@ export const GlobalKnownPeople: React.FC = () => {
 
       <main className="p-6 max-w-3xl mx-auto">
          {/* Summary Counter Card */}
-         <div className="bg-white p-8 rounded-[1.5rem] shadow-sm border border-slate-100 mb-8 flex flex-col justify-center">
-            <h2 className="text-6xl font-extrabold text-slate-900 mb-2 tracking-tight leading-none">
+         <div className="bg-white p-8 rounded-[1.5rem] shadow-sm border border-slate-100 mb-8 flex flex-col justify-center relative overflow-hidden">
+            <div className="absolute top-0 right-0 p-8 opacity-5 text-indigo-600 transform translate-x-4 -translate-y-4">
+                 <IconUsers className="w-32 h-32" />
+            </div>
+            <h2 className="text-6xl font-extrabold text-slate-900 mb-2 tracking-tight leading-none relative z-10">
                 {knownProfiles.length}
             </h2>
-            <p className="text-slate-400 text-xs uppercase tracking-[0.15em] font-bold">Known Total</p>
+            <p className="text-slate-400 text-xs uppercase tracking-[0.15em] font-bold relative z-10">Known Total</p>
          </div>
 
          {/* Known Members Header & Toggle */}
