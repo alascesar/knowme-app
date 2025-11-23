@@ -45,7 +45,11 @@ export const Home: React.FC = () => {
     if (showScanner && window.Html5QrcodeScanner) {
         const scanner = new window.Html5QrcodeScanner(
             "reader", 
-            { fps: 10, qrbox: { width: 250, height: 250 } },
+            { 
+                fps: 10, 
+                qrbox: { width: 250, height: 250 },
+                videoConstraints: { facingMode: "environment" } // Prefer rear camera
+            },
             /* verbose= */ false
         );
         
@@ -129,9 +133,6 @@ export const Home: React.FC = () => {
   );
   
   // Use slice to show only the visible count
-  // Assuming we want to show the list "as is" (usually chronological or insertion order), 
-  // but reversed to show "Last 3" (newest) first if that was the intent. 
-  // For now, we keep standard order, just limit the view.
   const displayedGroups = filteredMyGroups.slice(0, visibleGroupCount);
   const showSearchInMyGroups = groups.length > 6;
 
@@ -411,11 +412,26 @@ export const Home: React.FC = () => {
             <div className="fixed inset-0 z-50 bg-slate-900/90 backdrop-blur-sm flex items-center justify-center p-6 animate-fade-in">
                 <div className="bg-white rounded-3xl p-6 w-full max-w-md relative shadow-2xl">
                     <h2 className="font-bold text-center mb-6 text-xl text-slate-800">Scan Join Code</h2>
-                    <div id="reader" className="w-full h-72 bg-black rounded-2xl overflow-hidden border-4 border-slate-100 shadow-inner"></div>
-                    <Button fullWidth variant="secondary" className="mt-6 py-3" onClick={() => setShowScanner(false)}>
+                    <div id="reader" className="w-full h-72 bg-slate-100 rounded-2xl overflow-hidden border-4 border-slate-100 shadow-inner"></div>
+                    <p className="text-center text-xs text-slate-500 mt-4 px-4">
+                        If asked, please grant camera permissions to scan.
+                    </p>
+                    <Button fullWidth variant="secondary" className="mt-4 py-3" onClick={() => setShowScanner(false)}>
                         Close Scanner
                     </Button>
                 </div>
+                {/* Force override styles for the scanner library to ensure readability */}
+                <style>{`
+                    #reader__dashboard_section_csr span { color: #1e293b !important; }
+                    #reader__dashboard_section_swaplink { color: #4f46e5 !important; text-decoration: none !important; font-weight: 600; }
+                    #reader__camera_permission_button { 
+                        background-color: #4f46e5 !important; 
+                        color: white !important; 
+                        padding: 8px 12px; 
+                        border-radius: 8px; 
+                        font-weight: 500;
+                    }
+                `}</style>
             </div>
         )}
       </main>
