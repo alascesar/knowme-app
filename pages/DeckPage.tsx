@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useRef, useMemo } from 'react';
 import { Link, useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../App';
-import { supabaseStorage } from '../services/supabaseStorage';
+import { storage } from '../services/storage';
 import { CardStatus, ProfileCard } from '../types';
 import { DeckCard } from '../components/DeckCard';
 import { Button } from '../components/Button';
@@ -31,15 +31,8 @@ export const DeckPage: React.FC = () => {
 
   useEffect(() => {
     if (groupId && user) {
-        const loadDeck = async () => {
-          try {
-            const allCards = await supabaseStorage.getDeckForGroup(groupId, user.id);
-            setDeck(allCards);
-          } catch (error) {
-            console.error('Failed to load deck:', error);
-          }
-        };
-        loadDeck();
+        const allCards = storage.getDeckForGroup(groupId, user.id);
+        setDeck(allCards);
     }
   }, [groupId, user]);
 
@@ -74,6 +67,7 @@ export const DeckPage: React.FC = () => {
       dragXRef.current = 0;
       setIsDragging(false);
       isDraggingRef.current = false;
+      setWasDragged(false);
   };
 
   const handleNext = () => {
@@ -86,11 +80,10 @@ export const DeckPage: React.FC = () => {
       }
   };
 
-  const handleMarkKnown = async () => {
+  const handleMarkKnown = () => {
       if (!user || !groupId || !currentCardItem) return;
       
-      try {
-        await supabaseStorage.markAsKnown(user.id, currentCardItem.card.id, groupId, true);
+      storage.markAsKnown(user.id, currentCardItem.card.id, groupId, true);
       
       setDeck(prev => prev.map(item => {
           if (item.card.id === currentCardItem.card.id) {
@@ -110,21 +103,12 @@ export const DeckPage: React.FC = () => {
       
       if (filter === 'UNKNOWN') {
         setIsExpanded(false);
-        // Ensure we don't jump past end if list shrinks effectively (though we keep same index usually)
+        // Avoid index jumping past bounds when list shrinks
         if (currentIndex >= filteredDeck.length - 1) {
-             // If we were at the last item, stay at last valid index or loop
-             // For unknown flow, usually we just show the next one which slides into this index slot
-             // But since we filtered out the item we just marked known, the array shrinks.
-             // We should stay at 'currentIndex' but clamp it.
              setCurrentIndex(Math.max(0, filteredDeck.length - 2)); 
-             // Note: filteredDeck is calculated from 'deck' state. 
-             // On next render filteredDeck length will decrease by 1.
         }
       } else {
         handleNext();
-      }
-      } catch (error) {
-        console.error('Failed to mark as known:', error);
       }
   };
 
@@ -135,26 +119,24 @@ export const DeckPage: React.FC = () => {
       resetCardPosition();
   };
 
-  const handleResetKnowledge = async () => {
+  const handleResetKnowledge = () => {
       if (!user || !groupId) return;
-      try {
-        await supabaseStorage.resetGroupKnowledge(user.id, groupId);
-        const allCards = await supabaseStorage.getDeckForGroup(groupId, user.id);
-        setDeck(allCards);
-        setFilter('UNKNOWN');
-        setCurrentIndex(0);
-        resetCardPosition();
-      } catch (error) {
-        console.error('Failed to reset knowledge:', error);
-      }
+      storage.resetGroupKnowledge(user.id, groupId);
+      setDeck(storage.getDeckForGroup(groupId, user.id));
+      setFilter('UNKNOWN');
+      setCurrentIndex(0);
+      resetCardPosition();
   };
 
   // Swipe Completion Logic with Animation
   const completeSwipe = (direction: 'left' | 'right') => {
+      // Fly out distance
       setExitX(direction === 'right' ? 1000 : -1000);
       setIsDragging(false);
       isDraggingRef.current = false;
       
+      // Wait for transition to finish before swapping data
+      // Transition duration is 0.3s (300ms)
       setTimeout(() => {
           const { handleMarkKnown, handleNext, filter } = handlersRef.current;
           
@@ -167,7 +149,7 @@ export const DeckPage: React.FC = () => {
           } else {
               handleNext();
           }
-      }, 200);
+      }, 300);
   };
 
   const handlersRef = useRef({ handleNext, handleMarkKnown, resetCardPosition, filter });
@@ -232,14 +214,40 @@ export const DeckPage: React.FC = () => {
 
   if (!user) return null;
 
+  // -- Animation Logic --
+
+  // 1. Calculate swipe progress (0 to 1) for Background Interpolation
+  // Max drag considered for full transition: 200px
+  const SWIPE_THRESHOLD = 200;
+  let swipeProgress = 0;
+  if (exitX !== null) {
+      swipeProgress = 1; // Fully transitioned if exiting
+  } else {
+      swipeProgress = Math.min(Math.abs(dragX) / SWIPE_THRESHOLD, 1);
+  }
+
+  // 2. Background Card Styles (Interpolate from recessed to front)
+  const bgScale = 0.92 + (0.08 * swipeProgress); // 0.92 -> 1.0
+  const bgY = 24 * (1 - swipeProgress); // 24px -> 0px
+  const bgOpacity = 0.5 + (0.5 * swipeProgress); // 0.5 -> 1.0
+
+  const bgCardStyle: React.CSSProperties = {
+     transform: `scale(${bgScale}) translateY(${bgY}px)`,
+     opacity: bgOpacity,
+     // Move instantly during drag, smooth transition on release/exit
+     transition: isDragging ? 'none' : 'transform 0.3s ease-out, opacity 0.3s ease-out'
+  };
+
+  // 3. Foreground Card Styles
   const currentX = exitX !== null ? exitX : dragX;
   const rotateDeg = (currentX / 25); 
-  const opacity = exitX !== null ? 0 : (1 - Math.min(Math.abs(currentX) / 600, 0.1));
+  const fgOpacity = exitX !== null ? 0 : (1 - Math.min(Math.abs(currentX) / 600, 0.1));
   
-  const cardStyle: React.CSSProperties = {
+  const fgCardStyle: React.CSSProperties = {
       transform: `translateX(${currentX}px) rotate(${rotateDeg}deg)`,
-      opacity: opacity,
-      transition: isDragging ? 'none' : 'transform 0.4s cubic-bezier(0.2, 0.8, 0.2, 1), opacity 0.3s', 
+      opacity: fgOpacity,
+      // Instant during drag, smooth on release/exit
+      transition: isDragging ? 'none' : 'transform 0.3s cubic-bezier(0.2, 0.8, 0.2, 1), opacity 0.3s', 
       cursor: isDragging ? 'grabbing' : 'grab',
   };
 
@@ -265,28 +273,29 @@ export const DeckPage: React.FC = () => {
             {filteredDeck.length > 0 && currentCardItem ? (
                 <div className="relative w-full max-w-md flex flex-col items-center">
                      
-                     {/* Background Card (Next) - Rendered behind for preloading/smooth transition */}
+                     {/* Background Card (Next) */}
+                     {/* Rendered behind with interpolated styles to smooth the transition */}
                      {showNextCard && nextCardItem && (
                         <div 
-                            className="absolute top-0 w-full z-0 transition-all duration-300 ease-out pointer-events-none"
-                            style={{ 
-                                transform: 'scale(0.92) translateY(24px)', 
-                                opacity: 0.5,
-                            }}
+                            className="absolute top-0 w-full z-0 pointer-events-none"
+                            style={bgCardStyle}
                         >
                             <DeckCard 
                                 key={`bg-${nextCardItem.card.id}`}
                                 profile={nextCardItem.card}
-                                isExpanded={false} // Always collapsed in background
+                                isExpanded={false} 
                                 onToggleExpand={() => {}}
                             />
                         </div>
                      )}
 
                      {/* Foreground Card (Current) */}
+                     {/* KEY IS CRITICAL HERE: putting key on wrapper forces React to replace the element
+                         instead of animating it back from 1000px to 0px when index updates. */}
                      <div 
+                        key={`fg-${currentCardItem.card.id}`}
                         className="w-full relative z-10"
-                        style={{ ...cardStyle, touchAction: 'none' }} 
+                        style={{ ...fgCardStyle, touchAction: 'none' }} 
                         onTouchStart={onTouchStart}
                         onMouseDown={onMouseDown}
                      >
@@ -309,7 +318,6 @@ export const DeckPage: React.FC = () => {
                          </div>
 
                         <DeckCard 
-                            key={`fg-${currentCardItem.card.id}`} // Unique key forces remount to prevent stale visuals
                             profile={currentCardItem.card}
                             isExpanded={isExpanded}
                             onToggleExpand={toggleExpandWithCheck}

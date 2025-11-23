@@ -1,8 +1,7 @@
 import React, { createContext, useContext, useEffect, useState, PropsWithChildren } from 'react';
 import { HashRouter, Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom';
 import { User } from './types';
-import { supabase } from './services/supabase';
-import { supabaseStorage } from './services/supabaseStorage';
+import { storage } from './services/storage';
 
 // Pages
 import { Login } from './pages/Login';
@@ -57,44 +56,13 @@ export default function App() {
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    // Get initial session
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session) {
-        loadUser(session.user.id);
-      } else {
-        setIsLoading(false);
-      }
-    });
-
-    // Listen for auth changes
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-      if (session) {
-        await loadUser(session.user.id);
-      } else {
-        setUser(null);
-        setIsLoading(false);
-      }
-    });
-
-    return () => {
-      subscription.unsubscribe();
-    };
+    const currentUser = storage.getCurrentUser();
+    setUser(currentUser);
+    setIsLoading(false);
   }, []);
 
-  const loadUser = async (userId: string) => {
-    try {
-      const currentUser = await supabaseStorage.getCurrentUser();
-      setUser(currentUser);
-    } catch (error) {
-      console.error('Failed to load user:', error);
-      setUser(null);
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const logout = async () => {
-    await supabase.auth.signOut();
+  const logout = () => {
+    storage.logout();
     setUser(null);
   };
 

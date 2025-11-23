@@ -9,6 +9,7 @@ export interface User {
   email: string;
   type: UserType;
   avatarUrl?: string;
+  password?: string;
 }
 
 export interface ProfileCard {

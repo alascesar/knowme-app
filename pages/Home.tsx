@@ -1,8 +1,8 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../App';
 import { Group, UserType } from '../types';
-import { supabaseStorage } from '../services/supabaseStorage';
+import { storage } from '../services/storage';
 import { Button } from '../components/Button';
 import { IconUser, IconLogOut, IconUsers } from '../components/Icons';
 
@@ -10,13 +10,13 @@ import { IconUser, IconLogOut, IconUsers } from '../components/Icons';
 declare global {
   interface Window {
     Html5QrcodeScanner: any;
+    Html5Qrcode: any;
   }
 }
 
 export const Home: React.FC = () => {
   const { user, logout } = useAuth();
   const [groups, setGroups] = useState<Group[]>([]);
-  const [groupData, setGroupData] = useState<Map<string, { percentage: number, memberCount: number }>>(new Map());
   const [joinCode, setJoinCode] = useState('');
   const [error, setError] = useState('');
   const [globalRank, setGlobalRank] = useState<{ totalKnown: number, topPercent: number }>({ totalKnown: 0, topPercent: 0 });
@@ -32,133 +32,127 @@ export const Home: React.FC = () => {
   
   // Scanner State
   const [showScanner, setShowScanner] = useState(false);
+  const [scannerError, setScannerError] = useState('');
+  const scannerRef = useRef<any>(null);
 
   const navigate = useNavigate();
 
   useEffect(() => {
     if (user) {
-      const loadData = async () => {
-        try {
-          const [groupsData, rankData] = await Promise.all([
-            supabaseStorage.getGroupsForUser(user.id),
-            supabaseStorage.getGlobalRanking(user.id),
-          ]);
-          setGroups(groupsData);
-          setGlobalRank(rankData);
-          
-          // Load group progress and member counts
-          const groupDataMap = new Map<string, { percentage: number, memberCount: number }>();
-          await Promise.all(groupsData.map(async (group) => {
-            try {
-              const [progress, members] = await Promise.all([
-                supabaseStorage.getGroupProgress(group.id, user.id),
-                supabaseStorage.getGroupMembers(group.id),
-              ]);
-              groupDataMap.set(group.id, { percentage: progress, memberCount: members.length });
-            } catch (error) {
-              console.error(`Failed to load data for group ${group.id}:`, error);
-              groupDataMap.set(group.id, { percentage: 0, memberCount: 0 });
-            }
-          }));
-          setGroupData(groupDataMap);
-        } catch (error) {
-          console.error('Failed to load data:', error);
-        }
-      };
-      loadData();
+      setGroups(storage.getGroupsForUser(user.id));
+      setGlobalRank(storage.getGlobalRanking(user.id));
     }
   }, [user]);
 
+  // QR Scanner Effect
   useEffect(() => {
-    if (showScanner && window.Html5QrcodeScanner) {
-        const scanner = new window.Html5QrcodeScanner(
-            "reader", 
-            { 
-                fps: 10, 
-                qrbox: { width: 250, height: 250 },
-                videoConstraints: { facingMode: "environment" } // Prefer rear camera
-            },
-            /* verbose= */ false
-        );
+    if (showScanner && window.Html5Qrcode) {
+        setScannerError('');
         
-        scanner.render((decodedText: string) => {
-            let code = decodedText;
-            try {
-                const url = new URL(decodedText);
-                const codeParam = url.searchParams.get("code");
-                if (codeParam) code = codeParam;
-            } catch (e) {
-                // Not a URL, assume it is the code
+        // Cleanup previous instance if it exists (safety check)
+        if (scannerRef.current) {
+            try { scannerRef.current.clear(); } catch(e) {}
+        }
+
+        const html5QrCode = new window.Html5Qrcode("reader");
+        scannerRef.current = html5QrCode;
+
+        const config = { fps: 10, qrbox: { width: 250, height: 250 } };
+        
+        // Start scanning explicitly with environment (rear) camera
+        html5QrCode.start(
+            { facingMode: "environment" }, 
+            config, 
+            (decodedText: string) => {
+                // Success Callback
+                handleScanSuccess(decodedText);
+            },
+            (errorMessage: any) => {
+                // Ignore frame parse errors
             }
-            
-            setJoinCode(code.toUpperCase());
-            scanner.clear();
-            setShowScanner(false);
-            supabaseStorage.findGroupByCode(code.toUpperCase()).then(group => {
-              joinGroupById(group?.id);
-            });
-        }, (errorMessage: any) => {
-            // ignore errors
+        ).catch((err: any) => {
+            console.error("Error starting scanner", err);
+            setScannerError("Unable to access the rear camera. Please ensure you have granted camera permissions.");
         });
 
         return () => {
-            try {
-                scanner.clear(); 
-            } catch (e) {
-                console.error("Failed to clear scanner", e);
+            if (scannerRef.current) {
+                // We attempt to stop, but if it's not scanning it might throw, so we catch
+                scannerRef.current.stop().then(() => {
+                    scannerRef.current.clear();
+                }).catch((e: any) => {
+                    // If stop fails (e.g. wasn't scanning), just clear
+                    try { scannerRef.current.clear(); } catch(ex) {}
+                });
             }
         };
     }
   }, [showScanner]);
 
-  const handleJoinGroup = async (e: React.FormEvent) => {
+  const handleScanSuccess = (decodedText: string) => {
+      let code = decodedText;
+      try {
+          const url = new URL(decodedText);
+          const codeParam = url.searchParams.get("code");
+          if (codeParam) code = codeParam;
+      } catch (e) {
+          // Not a URL, assume it is the code
+      }
+      
+      const cleanCode = code.toUpperCase();
+      setJoinCode(cleanCode);
+      
+      // Stop scanner
+      if (scannerRef.current) {
+           scannerRef.current.stop().then(() => {
+               scannerRef.current.clear();
+               setShowScanner(false);
+               joinGroupById(storage.findGroupByCode(cleanCode)?.id);
+           }).catch((e: any) => {
+               console.error("Stop failed", e);
+               setShowScanner(false);
+           });
+      } else {
+          setShowScanner(false);
+          joinGroupById(storage.findGroupByCode(cleanCode)?.id);
+      }
+  };
+
+  const handleJoinGroup = (e: React.FormEvent) => {
     e.preventDefault();
     if (!user) return;
     
-    try {
-      const group = await supabaseStorage.findGroupByCode(joinCode);
-      await joinGroupById(group?.id);
-    } catch (error) {
-      setError('Failed to join group. Please try again.');
-    }
+    const group = storage.findGroupByCode(joinCode);
+    joinGroupById(group?.id);
   };
 
-  const joinGroupById = async (groupId?: string) => {
+  const joinGroupById = (groupId?: string) => {
       if (!user) return;
       if (groupId) {
-        try {
-          const joined = await supabaseStorage.joinGroup(groupId, user.id);
-          if (joined) {
-            const group = await supabaseStorage.getGroupById(groupId);
-            if (group) {
-              setGroups([...groups, group]);
-              setJoinCode('');
-              setError('');
-              setHasSearched(false);
-              setSearchQuery('');
-              setSearchResults([]);
-            }
-          } else {
+        const joined = storage.joinGroup(groupId, user.id);
+        if (joined) {
+            const group = storage.getGroupById(groupId);
+            // Use functional update to ensure we have latest groups state
+            if (group) setGroups(prev => [...prev, group]);
+            setJoinCode('');
+            setError('');
+            setHasSearched(false);
+            setSearchQuery('');
+            setSearchResults([]);
+        } else {
             setError('You are already in this group.');
-          }
-        } catch (error) {
-          setError('Failed to join group. Please try again.');
         }
       } else {
         setError('Invalid Group or Code.');
       }
   }
 
-  const handleSearch = async (e: React.FormEvent) => {
+  const handleSearch = (e: React.FormEvent) => {
       e.preventDefault();
       if (!searchQuery.trim()) return;
-      try {
-        const results = await supabaseStorage.searchPublicGroups(searchQuery);
-        setSearchResults(results);
-        setHasSearched(true);
-      } catch (error) {
-        setError('Failed to search groups. Please try again.');
-      }
+      const results = storage.searchPublicGroups(searchQuery);
+      setSearchResults(results);
+      setHasSearched(true);
   };
 
   const getProgressColor = (percentage: number) => {
@@ -264,9 +258,8 @@ export const Home: React.FC = () => {
             ) : (
                 <div className="space-y-4">
                     {displayedGroups.map(group => {
-                        const data = groupData.get(group.id) || { percentage: 0, memberCount: 0 };
-                        const percentage = data.percentage;
-                        const memberCount = data.memberCount;
+                        const percentage = storage.getGroupProgress(group.id, user.id);
+                        const memberCount = storage.getGroupMembers(group.id).length;
                         
                         return (
                             <Link key={group.id} to={`/group/${group.id}`} className="block transform transition-transform hover:scale-[1.02] active:scale-[0.98]">
@@ -457,26 +450,26 @@ export const Home: React.FC = () => {
             <div className="fixed inset-0 z-50 bg-slate-900/90 backdrop-blur-sm flex items-center justify-center p-6 animate-fade-in">
                 <div className="bg-white rounded-3xl p-6 w-full max-w-md relative shadow-2xl">
                     <h2 className="font-bold text-center mb-6 text-xl text-slate-800">Scan Join Code</h2>
-                    <div id="reader" className="w-full h-72 bg-slate-100 rounded-2xl overflow-hidden border-4 border-slate-100 shadow-inner"></div>
+                    
+                    {scannerError ? (
+                        <div className="bg-red-50 text-red-600 p-4 rounded-xl text-center mb-4 border border-red-100">
+                            <p className="font-bold mb-2 text-lg">Camera Error</p>
+                            <p className="text-sm leading-relaxed">{scannerError}</p>
+                            <div className="mt-4 text-xs text-red-500 bg-white/50 p-2 rounded">
+                                Tip: If denied, please enable camera access in your browser settings.
+                            </div>
+                        </div>
+                    ) : (
+                        <div id="reader" className="w-full h-80 bg-black rounded-2xl overflow-hidden shadow-inner border border-slate-100 relative"></div>
+                    )}
+
                     <p className="text-center text-xs text-slate-500 mt-4 px-4">
-                        If asked, please grant camera permissions to scan.
+                        Point your camera at a Group QR Code to join automatically.
                     </p>
                     <Button fullWidth variant="secondary" className="mt-4 py-3" onClick={() => setShowScanner(false)}>
                         Close Scanner
                     </Button>
                 </div>
-                {/* Force override styles for the scanner library to ensure readability */}
-                <style>{`
-                    #reader__dashboard_section_csr span { color: #1e293b !important; }
-                    #reader__dashboard_section_swaplink { color: #4f46e5 !important; text-decoration: none !important; font-weight: 600; }
-                    #reader__camera_permission_button { 
-                        background-color: #4f46e5 !important; 
-                        color: white !important; 
-                        padding: 8px 12px; 
-                        border-radius: 8px; 
-                        font-weight: 500;
-                    }
-                `}</style>
             </div>
         )}
       </main>

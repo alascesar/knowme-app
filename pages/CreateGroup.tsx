@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../App';
-import { supabaseStorage } from '../services/supabaseStorage';
+import { storage } from '../services/storage';
 import { Button } from '../components/Button';
 import { IconArrowLeft } from '../components/Icons';
 import { UserType } from '../types';
@@ -27,7 +27,7 @@ export const CreateGroup: React.FC = () => {
       );
   }
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
     if (!user) return;
@@ -36,7 +36,7 @@ export const CreateGroup: React.FC = () => {
     const code = joinCode.toUpperCase() || Math.random().toString(36).substring(2, 8).toUpperCase();
 
     try {
-        const newGroup = await supabaseStorage.createGroup({
+        const newGroup = storage.createGroup({
             name,
             description,
             isPublic,
@@ -45,7 +45,7 @@ export const CreateGroup: React.FC = () => {
         });
         navigate(`/group/${newGroup.id}`);
     } catch (err: any) {
-        setError(err.message || "This Join Code is already taken. Please choose another.");
+        setError("This Join Code is already taken. Please choose another.");
     }
   };
 

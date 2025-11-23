@@ -1,50 +1,24 @@
 import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../App';
-import { supabase } from '../services/supabase';
-import { supabaseStorage } from '../services/supabaseStorage';
+import { storage } from '../services/storage';
 import { Button } from '../components/Button';
 
 export const Login: React.FC = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
-  const [isLoading, setIsLoading] = useState(false);
   const { setUser } = useAuth();
   const navigate = useNavigate();
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    setError('');
-    setIsLoading(true);
-
-    try {
-      const { data, error: authError } = await supabase.auth.signInWithPassword({
-        email,
-        password,
-      });
-
-      if (authError) {
-        setError(authError.message || 'Invalid email or password');
-        setIsLoading(false);
-        return;
-      }
-
-      if (data.user) {
-        // Load user profile
-        const user = await supabaseStorage.getCurrentUser();
-        if (user) {
-          setUser(user);
-          navigate('/');
-        } else {
-          setError('Failed to load user profile');
-        }
-      }
-    } catch (err) {
-      setError('An unexpected error occurred. Please try again.');
-      console.error('Login error:', err);
-    } finally {
-      setIsLoading(false);
+    const user = storage.login(email, password);
+    if (user) {
+      setUser(user);
+      navigate('/');
+    } else {
+      setError('Invalid email or password. Try alice@example.com / password');
     }
   };
 
@@ -81,9 +55,7 @@ export const Login: React.FC = () => {
           </div>
           {error && <p className="text-red-500 text-sm bg-red-50 p-2 rounded-lg text-center">{error}</p>}
           
-          <Button type="submit" fullWidth size="lg" className="mt-2" disabled={isLoading}>
-            {isLoading ? 'Logging in...' : 'Log In'}
-          </Button>
+          <Button type="submit" fullWidth size="lg" className="mt-2">Log In</Button>
         </form>
 
         <div className="text-center text-sm text-slate-500">

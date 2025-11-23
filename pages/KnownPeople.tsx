@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { useAuth } from '../App';
-import { supabaseStorage } from '../services/supabaseStorage';
+import { storage } from '../services/storage';
 import { ProfileCard } from '../types';
 import { IconArrowLeft, IconCheck } from '../components/Icons';
 
@@ -12,17 +12,10 @@ export const KnownPeople: React.FC = () => {
 
   useEffect(() => {
     if (groupId && user) {
-        const loadKnown = async () => {
-          try {
-            const deck = await supabaseStorage.getDeckForGroup(groupId, user.id);
-            // Filter for known status
-            const known = deck.filter(item => item.status && item.status.isKnown).map(item => item.card);
-            setKnownProfiles(known);
-          } catch (error) {
-            console.error('Failed to load known people:', error);
-          }
-        };
-        loadKnown();
+        const deck = storage.getDeckForGroup(groupId, user.id);
+        // Filter for known status
+        const known = deck.filter(item => item.status && item.status.isKnown).map(item => item.card);
+        setKnownProfiles(known);
     }
   }, [groupId, user]);
 
