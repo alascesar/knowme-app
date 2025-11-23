@@ -322,6 +322,19 @@ export const storage = {
       const newStatuses = statuses.filter(s => !(s.viewerUserId === viewerId && s.groupId === groupId));
       localStorage.setItem(KEYS.STATUSES, JSON.stringify(newStatuses));
   },
+  getAllKnownProfiles: (viewerId: string): ProfileCard[] => {
+      const statuses: CardStatus[] = JSON.parse(localStorage.getItem(KEYS.STATUSES) || '[]');
+      const profiles: ProfileCard[] = JSON.parse(localStorage.getItem(KEYS.PROFILES) || '[]');
+      
+      const knownProfileIds = statuses
+          .filter(s => s.viewerUserId === viewerId && s.isKnown)
+          .map(s => s.profileCardId);
+      
+      // Use Set to avoid duplicates if user is in multiple groups with same person
+      const uniqueIds = Array.from(new Set(knownProfileIds));
+      
+      return profiles.filter(p => uniqueIds.includes(p.id));
+  },
   getGroupProgress: (groupId: string, viewerId: string): number => {
       const deck = storage.getDeckForGroup(groupId, viewerId);
       if (deck.length === 0) return 0;

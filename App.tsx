@@ -12,6 +12,7 @@ import { GroupDetail } from './pages/GroupDetail';
 import { CreateGroup } from './pages/CreateGroup';
 import { DeckPage } from './pages/DeckPage';
 import { KnownPeople } from './pages/KnownPeople';
+import { GlobalKnownPeople } from './pages/GlobalKnownPeople';
 
 // Auth Context
 interface AuthContextType {
@@ -45,6 +46,7 @@ const AppContent = () => {
         <Route path="/group/:groupId" element={<ProtectedRoute><GroupDetail /></ProtectedRoute>} />
         <Route path="/group/:groupId/deck" element={<ProtectedRoute><DeckPage /></ProtectedRoute>} />
         <Route path="/group/:groupId/known" element={<ProtectedRoute><KnownPeople /></ProtectedRoute>} />
+        <Route path="/my-network" element={<ProtectedRoute><GlobalKnownPeople /></ProtectedRoute>} />
       </Routes>
    )
 }
