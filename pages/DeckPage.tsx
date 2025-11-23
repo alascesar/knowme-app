@@ -62,6 +62,11 @@ export const DeckPage: React.FC = () => {
     : currentIndex;
     
   const currentCardItem = filteredDeck[validIndex];
+  
+  // Calculate next card for background rendering (preloading)
+  const nextIndex = (validIndex + 1) % filteredDeck.length;
+  const showNextCard = filteredDeck.length > 1;
+  const nextCardItem = showNextCard ? filteredDeck[nextIndex] : null;
 
   const resetCardPosition = () => {
       setDragX(0);
@@ -105,8 +110,15 @@ export const DeckPage: React.FC = () => {
       
       if (filter === 'UNKNOWN') {
         setIsExpanded(false);
+        // Ensure we don't jump past end if list shrinks effectively (though we keep same index usually)
         if (currentIndex >= filteredDeck.length - 1) {
-            setCurrentIndex(Math.max(0, filteredDeck.length - 2));
+             // If we were at the last item, stay at last valid index or loop
+             // For unknown flow, usually we just show the next one which slides into this index slot
+             // But since we filtered out the item we just marked known, the array shrinks.
+             // We should stay at 'currentIndex' but clamp it.
+             setCurrentIndex(Math.max(0, filteredDeck.length - 2)); 
+             // Note: filteredDeck is calculated from 'deck' state. 
+             // On next render filteredDeck length will decrease by 1.
         }
       } else {
         handleNext();
@@ -251,33 +263,53 @@ export const DeckPage: React.FC = () => {
 
        <div className="flex-1 flex flex-col items-center justify-center p-4 relative select-none">
             {filteredDeck.length > 0 && currentCardItem ? (
-                <div 
-                    className="w-full flex justify-center perspective-1000 relative"
-                    style={{ touchAction: 'none' }} 
-                    onTouchStart={onTouchStart}
-                    onMouseDown={onMouseDown}
-                >
-                     <div style={cardStyle} className="w-full max-w-md relative">
-                        
-                        {/* Elegant Overlays */}
-                        
-                        {/* KNOWN (Swipe Right) */}
+                <div className="relative w-full max-w-md flex flex-col items-center">
+                     
+                     {/* Background Card (Next) - Rendered behind for preloading/smooth transition */}
+                     {showNextCard && nextCardItem && (
                         <div 
+                            className="absolute top-0 w-full z-0 transition-all duration-300 ease-out pointer-events-none"
+                            style={{ 
+                                transform: 'scale(0.92) translateY(24px)', 
+                                opacity: 0.5,
+                            }}
+                        >
+                            <DeckCard 
+                                key={`bg-${nextCardItem.card.id}`}
+                                profile={nextCardItem.card}
+                                isExpanded={false} // Always collapsed in background
+                                onToggleExpand={() => {}}
+                            />
+                        </div>
+                     )}
+
+                     {/* Foreground Card (Current) */}
+                     <div 
+                        className="w-full relative z-10"
+                        style={{ ...cardStyle, touchAction: 'none' }} 
+                        onTouchStart={onTouchStart}
+                        onMouseDown={onMouseDown}
+                     >
+                         {/* Overlays */}
+                         
+                         {/* KNOWN (Swipe Right) */}
+                         <div 
                             className="absolute top-8 left-8 z-50 text-green-500 font-bold text-4xl tracking-widest transform -rotate-12 pointer-events-none drop-shadow-sm border-4 border-green-500/50 rounded-xl px-4 py-1 bg-white/20 backdrop-blur-sm"
                             style={{ opacity: dragX > 0 ? Math.min(dragX / 100, 0.9) : 0 }}
-                        >
+                         >
                             KNOWN
-                        </div>
+                         </div>
 
-                        {/* NEXT (Swipe Left) */}
-                        <div 
+                         {/* NEXT (Swipe Left) */}
+                         <div 
                             className="absolute top-8 right-8 z-50 text-pink-500 font-bold text-4xl tracking-widest transform rotate-12 pointer-events-none drop-shadow-sm border-4 border-pink-500/50 rounded-xl px-4 py-1 bg-white/20 backdrop-blur-sm"
                             style={{ opacity: dragX < 0 ? Math.min(Math.abs(dragX) / 100, 0.9) : 0 }}
-                        >
+                         >
                             NEXT
-                        </div>
+                         </div>
 
                         <DeckCard 
+                            key={`fg-${currentCardItem.card.id}`} // Unique key forces remount to prevent stale visuals
                             profile={currentCardItem.card}
                             isExpanded={isExpanded}
                             onToggleExpand={toggleExpandWithCheck}

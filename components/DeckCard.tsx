@@ -50,12 +50,13 @@ export const DeckCard: React.FC<DeckCardProps> = ({ profile, isExpanded, onToggl
         <img 
           src={profile.photoUrl} 
           alt="Profile" 
+          loading="eager"
           className="w-full h-full object-cover"
         />
         <div className="absolute inset-0 bg-gradient-to-t from-slate-900 via-slate-900/20 to-transparent pointer-events-none opacity-90" />
         
         {!isExpanded ? (
-            <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+            <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none animate-fade-in">
                  <div className="bg-white/10 backdrop-blur-md border border-white/20 p-4 rounded-full mb-4 shadow-lg animate-bounce">
                     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-8 h-8 text-white">
                       <path strokeLinecap="round" strokeLinejoin="round" d="M2.036 12.322a1.012 1.012 0 010-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178z" />
