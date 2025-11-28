@@ -1,14 +1,15 @@
 import React, { useEffect, useState, useRef } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../App';
 import { ProfileCard } from '../types';
 import { storage } from '../services/storage';
 import { Button } from '../components/Button';
-import { IconArrowLeft, IconMicrophone, IconCamera, IconUser, IconSwitchCamera, IconX } from '../components/Icons';
+import { IconArrowLeft, IconMicrophone, IconCamera, IconUser, IconSwitchCamera, IconX, IconLogOut } from '../components/Icons';
 import { DeckCard } from '../components/DeckCard';
 
 export const MyProfile: React.FC = () => {
-  const { user } = useAuth();
+  const { user, logout } = useAuth();
+  const navigate = useNavigate();
   const [profile, setProfile] = useState<ProfileCard | undefined>(undefined);
   const [isSaving, setIsSaving] = useState(false);
   const [showPhotoOptions, setShowPhotoOptions] = useState(false);
@@ -116,7 +117,7 @@ export const MyProfile: React.FC = () => {
         setSaveSuccess(true);
         setPasswordMessage('');
         setTimeout(() => setSaveSuccess(false), 3000);
-    }, 800);
+    }, 1500); // Increased duration slightly to show saving state clearly
   };
 
   const toggleRecording = async () => {
@@ -236,6 +237,10 @@ export const MyProfile: React.FC = () => {
         startStream();
     }
   }, [isCameraOpen, facingMode]);
+
+  const handleLogout = () => {
+      logout();
+  };
 
 
   if (!user || !profile) return <div>Loading...</div>;
@@ -378,11 +383,28 @@ export const MyProfile: React.FC = () => {
                 fullWidth 
                 size="lg" 
                 isLoading={isSaving}
-                disabled={!isDirty && !saveSuccess}
-                className={saveSuccess ? "!bg-green-600 !hover:bg-green-700" : ""}
+                disabled={!isDirty && !isSaving && !saveSuccess}
+                variant={isSaving ? 'secondary' : 'primary'}
+                className={`transition-all duration-500 ${
+                    saveSuccess 
+                    ? "!bg-gradient-to-r !from-emerald-500 !to-green-500 !shadow-lg !shadow-green-500/30 !text-white !border-transparent" 
+                    : ""
+                }`}
             >
                 {saveSuccess ? 'Changes Saved' : (isSaving ? 'Saving...' : 'Save Profile')}
             </Button>
+            
+            {/* Logout Button */}
+            <div className="pt-6 text-center border-t border-slate-100 mt-8 flex justify-center">
+                <button 
+                    type="button" 
+                    onClick={handleLogout}
+                    className="flex items-center gap-2 px-6 py-2.5 rounded-xl border border-slate-200 text-slate-500 font-medium hover:bg-slate-50 hover:text-slate-800 transition-all"
+                >
+                    <IconLogOut className="w-4 h-4" />
+                    Log Out
+                </button>
+            </div>
 
           </form>
        </main>

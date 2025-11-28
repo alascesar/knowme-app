@@ -4,7 +4,7 @@ import { useAuth } from '../App';
 import { storage } from '../services/storage';
 import { Group, User, UserType } from '../types';
 import { Button } from '../components/Button';
-import { IconArrowLeft, IconUsers, IconCheck, IconShare, IconClipboard, IconPencil, IconX } from '../components/Icons';
+import { IconArrowLeft, IconUsers, IconCheck, IconShare, IconCopy, IconPencil, IconX } from '../components/Icons';
 
 export const GroupDetail: React.FC = () => {
   const { groupId } = useParams<{ groupId: string }>();
@@ -71,12 +71,22 @@ export const GroupDetail: React.FC = () => {
         // Fallback to clipboard
         try {
             await navigator.clipboard.writeText(`${window.location.origin}?code=${group.joinCode}`);
-            setCopied(true);
-            setTimeout(() => setCopied(false), 2000);
+            alert("Invite link copied to clipboard!");
         } catch (err) {
             console.error("Failed to copy", err);
         }
     }
+  };
+
+  const handleCopyCode = async () => {
+      if (!group) return;
+      try {
+          await navigator.clipboard.writeText(group.joinCode);
+          setCopied(true);
+          setTimeout(() => setCopied(false), 2000);
+      } catch (err) {
+          console.error("Failed to copy code", err);
+      }
   };
 
   const handleBulkInvite = (e: React.FormEvent) => {
@@ -178,8 +188,8 @@ export const GroupDetail: React.FC = () => {
                                 <span className="block text-[10px] text-slate-400 uppercase font-bold tracking-widest mb-1">Join Code</span>
                                 <span className="text-2xl font-mono font-bold text-slate-800 tracking-wider">{group.joinCode}</span>
                              </div>
-                             <button onClick={handleShare} className="text-indigo-600 hover:text-indigo-700 p-2 hover:bg-indigo-50 rounded-lg transition-colors">
-                                 {copied ? <IconCheck className="w-6 h-6 text-green-500" /> : <IconClipboard className="w-6 h-6" />}
+                             <button onClick={handleCopyCode} className="text-indigo-600 hover:text-indigo-700 p-2 hover:bg-indigo-50 rounded-lg transition-colors" title="Copy Code">
+                                 {copied ? <IconCheck className="w-6 h-6 text-green-500" /> : <IconCopy className="w-6 h-6" />}
                              </button>
                         </div>
                         <Button variant="secondary" size="sm" fullWidth onClick={handleShare} className="py-3">

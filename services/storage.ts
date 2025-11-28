@@ -2,26 +2,39 @@ import { User, Group, ProfileCard, Membership, CardStatus, UserType } from '../t
 
 // Keys for localStorage - Versioned to force fresh data load
 const KEYS = {
-  USERS: 'know-me-app_users_v2',
-  GROUPS: 'know-me-app_groups_v2',
-  PROFILES: 'know-me-app_profiles_v2',
-  MEMBERSHIPS: 'know-me-app_memberships_v2',
-  STATUSES: 'know-me-app_statuses_v2',
-  CURRENT_USER: 'know-me-app_current_user_v2',
-  INVITATIONS: 'know-me-app_invitations_v2',
+  USERS: 'know-me-app_users_v4', // Bumped version to v4 to force new images
+  GROUPS: 'know-me-app_groups_v4',
+  PROFILES: 'know-me-app_profiles_v4',
+  MEMBERSHIPS: 'know-me-app_memberships_v4',
+  STATUSES: 'know-me-app_statuses_v4',
+  CURRENT_USER: 'know-me-app_current_user_v4',
+  INVITATIONS: 'know-me-app_invitations_v4',
 };
 
 // Helper to generate ID
 const generateId = () => Math.random().toString(36).substring(2, 9);
+
+// Helper for stable AI photos using randomuser.me (Reliable source)
+const getAiPhoto = (gender: 'male' | 'female', idStr: string) => {
+    // Generate a consistent number from the string id to pick a stable image
+    let hash = 0;
+    for (let i = 0; i < idStr.length; i++) {
+        hash = idStr.charCodeAt(i) + ((hash << 5) - hash);
+    }
+    // randomuser.me has indices 0-99 for both genders
+    const index = Math.abs(hash) % 99; 
+    const genderPath = gender === 'male' ? 'men' : 'women';
+    return `https://randomuser.me/api/portraits/${genderPath}/${index}.jpg`;
+};
 
 // Mock Data Initialization
 const initializeData = () => {
   if (!localStorage.getItem(KEYS.USERS)) {
     // Basic Users
     const users: User[] = [
-      { id: 'u1', name: 'Alice Wonder', email: 'alice@example.com', type: UserType.PREMIUM, avatarUrl: 'https://picsum.photos/seed/alice/200', password: 'password' },
-      { id: 'u2', name: 'Bob Builder', email: 'bob@example.com', type: UserType.STANDARD, avatarUrl: 'https://picsum.photos/seed/bob/200', password: 'password' },
-      { id: 'u3', name: 'Charlie Chef', email: 'charlie@example.com', type: UserType.STANDARD, avatarUrl: 'https://picsum.photos/seed/charlie/200', password: 'password' },
+      { id: 'u1', name: 'Alice Wonder', email: 'alice@example.com', type: UserType.PREMIUM, avatarUrl: getAiPhoto('female', 'u1'), password: 'password' },
+      { id: 'u2', name: 'Bob Builder', email: 'bob@example.com', type: UserType.STANDARD, avatarUrl: getAiPhoto('male', 'u2'), password: 'password' },
+      { id: 'u3', name: 'Charlie Chef', email: 'charlie@example.com', type: UserType.STANDARD, avatarUrl: getAiPhoto('male', 'u3'), password: 'password' },
     ];
     
     // Groups
@@ -47,40 +60,59 @@ const initializeData = () => {
     const profiles: ProfileCard[] = [
       { 
         id: 'p1', userId: 'u1', fullName: 'Alice Wonderland', 
-        photoUrl: 'https://picsum.photos/seed/alice/400/600', shortBio: 'Lead Designer with a passion for typography.', 
+        photoUrl: getAiPhoto('female', 'u1'), shortBio: 'Lead Designer with a passion for typography.', 
         nationality: 'UK', funFact: 'I have three cats named Hue, Saturation, and Value.', links: ['portfolio.com/alice']
       },
       { 
         id: 'p2', userId: 'u2', fullName: 'Robert Builder', 
-        photoUrl: 'https://picsum.photos/seed/bob/400/600', shortBio: 'Fixing things since 2010.', 
+        photoUrl: getAiPhoto('male', 'u2'), shortBio: 'Fixing things since 2010.', 
         nationality: 'USA', funFact: 'I can juggle 4 hammers.', links: []
       },
       { 
         id: 'p3', userId: 'u3', fullName: 'Charles Cooking', 
-        photoUrl: 'https://picsum.photos/seed/charlie/400/600', shortBio: 'Making the office smell great every lunch.', 
+        photoUrl: getAiPhoto('male', 'u3'), shortBio: 'Making the office smell great every lunch.', 
         nationality: 'France', funFact: 'I once cooked for a minor celebrity.', links: []
       },
     ];
 
     // Generate 30 Test Users (10 per new group)
-    const teams = [
+    // Explicitly typed to ensure gender is passed correctly
+    const teams: { id: string; prefix: string; dept: string; users: { n: string; role: string; g: 'male' | 'female' }[] }[] = [
         { id: 'g_eng', prefix: 'eng', dept: 'Engineering', users: [
-            { n: 'Sarah Jenkins', role: 'Frontend Dev' }, { n: 'Mike Chen', role: 'Backend Lead' }, { n: 'Jessica Wu', role: 'QA Engineer' },
-            { n: 'David Miller', role: 'DevOps' }, { n: 'Emily Davis', role: 'Product Manager' }, { n: 'James Wilson', role: 'Full Stack' },
-            { n: 'Robert Taylor', role: 'Mobile Dev' }, { n: 'Linda Anderson', role: 'UX Research' }, { n: 'William Thomas', role: 'System Arch' },
-            { n: 'Elizabeth Martinez', role: 'Intern' }
+            { n: 'Sarah Jenkins', role: 'Frontend Dev', g: 'female' }, 
+            { n: 'Mike Chen', role: 'Backend Lead', g: 'male' }, 
+            { n: 'Jessica Wu', role: 'QA Engineer', g: 'female' },
+            { n: 'David Miller', role: 'DevOps', g: 'male' }, 
+            { n: 'Emily Davis', role: 'Product Manager', g: 'female' }, 
+            { n: 'James Wilson', role: 'Full Stack', g: 'male' },
+            { n: 'Robert Taylor', role: 'Mobile Dev', g: 'male' }, 
+            { n: 'Linda Anderson', role: 'UX Research', g: 'female' }, 
+            { n: 'William Thomas', role: 'System Arch', g: 'male' },
+            { n: 'Elizabeth Martinez', role: 'Intern', g: 'female' }
         ]},
         { id: 'g_sales', prefix: 'sales', dept: 'Sales', users: [
-            { n: 'John Smith', role: 'VP Sales' }, { n: 'Karen White', role: 'Account Exec' }, { n: 'Kevin Brown', role: 'SDR' },
-            { n: 'Laura Garcia', role: 'Sales Ops' }, { n: 'Steven Robinson', role: 'Regional Mgr' }, { n: 'Patricia Clark', role: 'Account Mgr' },
-            { n: 'Christopher Rodriguez', role: 'SDR Lead' }, { n: 'Barbara Lewis', role: 'Customer Success' }, { n: 'Daniel Lee', role: 'Solutions Eng' },
-            { n: 'Paul Walker', role: 'Field Sales' }
+            { n: 'John Smith', role: 'VP Sales', g: 'male' }, 
+            { n: 'Karen White', role: 'Account Exec', g: 'female' }, 
+            { n: 'Kevin Brown', role: 'SDR', g: 'male' },
+            { n: 'Laura Garcia', role: 'Sales Ops', g: 'female' }, 
+            { n: 'Steven Robinson', role: 'Regional Mgr', g: 'male' }, 
+            { n: 'Patricia Clark', role: 'Account Mgr', g: 'female' },
+            { n: 'Christopher Rodriguez', role: 'SDR Lead', g: 'male' }, 
+            { n: 'Barbara Lewis', role: 'Customer Success', g: 'female' }, 
+            { n: 'Daniel Lee', role: 'Solutions Eng', g: 'male' },
+            { n: 'Paul Walker', role: 'Field Sales', g: 'male' }
         ]},
         { id: 'g_mkt', prefix: 'mkt', dept: 'Marketing', users: [
-             { n: 'Jennifer Hall', role: 'CMO' }, { n: 'Mark Allen', role: 'Brand Mgr' }, { n: 'Maria Young', role: 'Content Lead' },
-             { n: 'Charles King', role: 'SEO Specialist' }, { n: 'Susan Wright', role: 'Events Coord' }, { n: 'Joseph Scott', role: 'Social Media' },
-             { n: 'Margaret Green', role: 'Designer' }, { n: 'Thomas Baker', role: 'Copywriter' }, { n: 'Nancy Adams', role: 'Analyst' },
-             { n: 'Lisa Nelson', role: 'PR Manager' }
+             { n: 'Jennifer Hall', role: 'CMO', g: 'female' }, 
+             { n: 'Mark Allen', role: 'Brand Mgr', g: 'male' }, 
+             { n: 'Maria Young', role: 'Content Lead', g: 'female' },
+             { n: 'Charles King', role: 'SEO Specialist', g: 'male' }, 
+             { n: 'Susan Wright', role: 'Events Coord', g: 'female' }, 
+             { n: 'Joseph Scott', role: 'Social Media', g: 'male' },
+             { n: 'Margaret Green', role: 'Designer', g: 'female' }, 
+             { n: 'Thomas Baker', role: 'Copywriter', g: 'male' }, 
+             { n: 'Nancy Adams', role: 'Analyst', g: 'female' }, 
+             { n: 'Lisa Nelson', role: 'PR Manager', g: 'female' }
         ]}
     ];
 
@@ -89,12 +121,14 @@ const initializeData = () => {
             const uid = `u_${team.prefix}_${idx}`;
             const pid = `p_${team.prefix}_${idx}`;
             
+            const photo = getAiPhoto(u.g, uid);
+            
             users.push({
                 id: uid,
                 name: u.n,
                 email: `${u.n.split(' ')[0].toLowerCase()}@knowme.demo`,
                 type: UserType.STANDARD,
-                avatarUrl: `https://picsum.photos/seed/${uid}/200`,
+                avatarUrl: photo,
                 password: 'password'
             });
 
@@ -108,7 +142,7 @@ const initializeData = () => {
                 id: pid,
                 userId: uid,
                 fullName: u.n,
-                photoUrl: `https://picsum.photos/seed/${pid}/400/600`,
+                photoUrl: photo,
                 shortBio: `${u.role} at KnowMe Corp. Excited to be part of the ${team.dept} team!`,
                 nationality: ['USA', 'UK', 'Canada', 'Spain', 'Germany', 'Australia'][Math.floor(Math.random() * 6)],
                 funFact: 'I love trying new coffee spots and hiking on weekends.',
@@ -148,14 +182,54 @@ export const storage = {
     }
     return null;
   },
+  loginWithGoogle: (): { user: User, isNew: boolean } => {
+    const users: User[] = JSON.parse(localStorage.getItem(KEYS.USERS) || '[]');
+    const googleEmail = 'alex.doe@gmail.com'; // Mock Google user
+    let user = users.find(u => u.email === googleEmail);
+    let isNew = false;
+
+    if (!user) {
+        // Create if doesn't exist (Simulate signup)
+        isNew = true;
+        const photo = getAiPhoto('male', 'alex_google');
+        user = {
+            id: generateId(),
+            name: 'Alex Doe',
+            email: googleEmail,
+            type: UserType.STANDARD,
+            avatarUrl: photo, 
+            password: 'google-oauth-placeholder'
+        };
+        users.push(user);
+        localStorage.setItem(KEYS.USERS, JSON.stringify(users));
+        
+        // Create profile for them
+        const profiles: ProfileCard[] = JSON.parse(localStorage.getItem(KEYS.PROFILES) || '[]');
+        profiles.push({
+            id: generateId(),
+            userId: user.id,
+            fullName: user.name,
+            photoUrl: photo,
+            links: []
+        });
+        localStorage.setItem(KEYS.PROFILES, JSON.stringify(profiles));
+    }
+    
+    localStorage.setItem(KEYS.CURRENT_USER, JSON.stringify(user));
+    return { user, isNew };
+  },
   signup: (name: string, email: string, type: UserType, password?: string): User => {
     const users: User[] = JSON.parse(localStorage.getItem(KEYS.USERS) || '[]');
+    // Simple heuristic for gender based on name length for demo (evens female, odds male) just to vary it
+    const gender = name.length % 2 === 0 ? 'female' : 'male';
+    const photo = getAiPhoto(gender, name + Date.now());
+
     const newUser: User = {
       id: generateId(),
       name,
       email,
       type,
-      avatarUrl: `https://picsum.photos/seed/${name.replace(' ', '')}/200`,
+      avatarUrl: photo,
       password: password || 'password', // Default for MVP
     };
     users.push(newUser);
@@ -168,7 +242,7 @@ export const storage = {
         id: generateId(),
         userId: newUser.id,
         fullName: name,
-        photoUrl: `https://picsum.photos/seed/${newUser.id}/400/600`, // Placeholder
+        photoUrl: photo, // Placeholder
         links: []
     };
     profiles.push(newProfile);

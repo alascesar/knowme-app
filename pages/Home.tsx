@@ -4,7 +4,7 @@ import { useAuth } from '../App';
 import { Group, UserType } from '../types';
 import { storage } from '../services/storage';
 import { Button } from '../components/Button';
-import { IconUser, IconLogOut, IconUsers } from '../components/Icons';
+import { IconUsers } from '../components/Icons';
 
 // Extend window to satisfy TypeScript for the global library
 declare global {
@@ -57,7 +57,18 @@ export const Home: React.FC = () => {
         const html5QrCode = new window.Html5Qrcode("reader");
         scannerRef.current = html5QrCode;
 
-        const config = { fps: 10, qrbox: { width: 250, height: 250 } };
+        // Dynamic square config
+        const config = { 
+            fps: 10, 
+            qrbox: (viewfinderWidth: number, viewfinderHeight: number) => {
+                const minEdge = Math.min(viewfinderWidth, viewfinderHeight);
+                return {
+                    width: Math.floor(minEdge * 0.75),
+                    height: Math.floor(minEdge * 0.75)
+                };
+            },
+            aspectRatio: 1.0
+        };
         
         // Start scanning explicitly with environment (rear) camera
         html5QrCode.start(
@@ -129,18 +140,29 @@ export const Home: React.FC = () => {
   const joinGroupById = (groupId?: string) => {
       if (!user) return;
       if (groupId) {
-        const joined = storage.joinGroup(groupId, user.id);
-        if (joined) {
-            const group = storage.getGroupById(groupId);
-            // Use functional update to ensure we have latest groups state
-            if (group) setGroups(prev => [...prev, group]);
+        // Attempt join
+        storage.joinGroup(groupId, user.id);
+        
+        // Force refresh groups (although we navigate away)
+        const group = storage.getGroupById(groupId);
+        if (group) {
+            setGroups(prev => {
+                // Avoid duplicates
+                if (prev.some(g => g.id === group.id)) return prev;
+                return [...prev, group];
+            });
+            
+            // Clear UI state
             setJoinCode('');
             setError('');
             setHasSearched(false);
             setSearchQuery('');
             setSearchResults([]);
+
+            // DIRECT NAVIGATION TO GROUP
+            navigate(`/group/${groupId}`);
         } else {
-            setError('You are already in this group.');
+            setError('Group not found');
         }
       } else {
         setError('Invalid Group or Code.');
@@ -178,22 +200,17 @@ export const Home: React.FC = () => {
     <div className="min-h-screen pb-24">
       {/* Header */}
       <header className="bg-white/80 backdrop-blur-md px-6 py-4 sticky top-0 z-20 border-b border-slate-100 flex items-center justify-between">
-         <div className="flex items-center gap-3">
+         <Link to="/profile" className="flex items-center gap-3 group">
             <div className="relative">
-                <img src={user.avatarUrl} alt={user.name} className="w-11 h-11 rounded-full object-cover border-2 border-white shadow-sm" />
+                <img src={user.avatarUrl} alt={user.name} className="w-11 h-11 rounded-full object-cover border-2 border-white shadow-sm transition-transform group-hover:scale-105" />
                 <div className="absolute bottom-0 right-0 w-3 h-3 bg-green-500 border-2 border-white rounded-full"></div>
             </div>
             <div>
-                <h1 className="font-bold text-slate-900 leading-tight text-lg">{user.name}</h1>
+                <h1 className="font-bold text-slate-900 leading-tight text-lg group-hover:text-indigo-600 transition-colors">{user.name}</h1>
                 <p className="text-xs text-slate-500 font-medium">{isPremium ? 'Premium Member' : 'Standard Member'}</p>
             </div>
-         </div>
-         <div className="flex gap-1">
-             <Link to="/profile">
-                <Button variant="ghost" size="sm" className="w-10 h-10 p-0 rounded-full hover:bg-indigo-50 hover:text-indigo-600"><IconUser className="w-6 h-6" /></Button>
-             </Link>
-             <Button variant="ghost" size="sm" className="w-10 h-10 p-0 rounded-full text-slate-400 hover:bg-red-50 hover:text-red-500" onClick={logout}><IconLogOut className="w-6 h-6" /></Button>
-         </div>
+         </Link>
+         {/* Minimalistic Header: No extra buttons, avatar handles profile/logout navigation via profile page */}
       </header>
 
       <main className="p-6 space-y-8 max-w-lg mx-auto">
@@ -460,7 +477,8 @@ export const Home: React.FC = () => {
                             </div>
                         </div>
                     ) : (
-                        <div id="reader" className="w-full h-80 bg-black rounded-2xl overflow-hidden shadow-inner border border-slate-100 relative"></div>
+                        // Changed from h-80 to aspect-square to ensure a full square view
+                        <div id="reader" className="w-full aspect-square bg-black rounded-3xl overflow-hidden shadow-2xl border border-slate-100 relative"></div>
                     )}
 
                     <p className="text-center text-xs text-slate-500 mt-4 px-4">

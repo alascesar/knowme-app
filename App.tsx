@@ -33,8 +33,46 @@ const ProtectedRoute = ({ children }: PropsWithChildren) => {
 };
 
 const AppContent = () => {
-   // This wrapper allows usage of useNavigate inside the provider if needed, 
-   // though mainly for clean structure here.
+   const { user } = useAuth();
+   const navigate = useNavigate();
+
+   // Handle Deep Linking (External QR Codes / Links)
+   useEffect(() => {
+     // Check for ?code= in the main window URL (before hash)
+     const params = new URLSearchParams(window.location.search);
+     const code = params.get('code');
+     
+     if (code) {
+         console.log("Deep link code detected:", code);
+         localStorage.setItem('pendingJoinCode', code.toUpperCase());
+         
+         // Clean the URL so we don't re-trigger on refresh
+         const newUrl = window.location.protocol + "//" + window.location.host + window.location.pathname + window.location.hash;
+         window.history.replaceState({path: newUrl}, '', newUrl);
+     }
+   }, []);
+
+   // Process Pending Joins when User is Authenticated
+   useEffect(() => {
+       const pendingCode = localStorage.getItem('pendingJoinCode');
+       if (user && pendingCode) {
+           console.log("Processing pending join code:", pendingCode);
+           const group = storage.findGroupByCode(pendingCode);
+           if (group) {
+               // Auto join
+               storage.joinGroup(group.id, user.id);
+               // Clear pending
+               localStorage.removeItem('pendingJoinCode');
+               // Redirect to group
+               navigate(`/group/${group.id}`);
+           } else {
+               // Invalid code, clear it
+               console.warn("Invalid pending code");
+               localStorage.removeItem('pendingJoinCode');
+           }
+       }
+   }, [user, navigate]);
+
    return (
       <Routes>
         <Route path="/login" element={<Login />} />
